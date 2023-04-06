@@ -45,4 +45,4 @@ python main.py
 
 ## API文档
 
-启动项目后，访问http://<HOST>:<PORT>/docs即可查看openapi文档，配合postman等调试工具可以更方便的调试。
+启动项目后，访问`http://<HOST>:<PORT>/docs`即可查看openapi文档，配合postman等调试工具可以更方便的调试。
