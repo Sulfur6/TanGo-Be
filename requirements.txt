@@ -1,0 +1,8 @@
+aioredis>=2.0.1
+ormar>=0.12.1
+SQLAlchemy>=1.4.41
+databases>=0.6.2
+pydantic>=1.10.4
+fastapi>=0.94.1
+starlette>=0.26.1
+uvicorn>=0.21.1
