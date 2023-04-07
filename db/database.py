@@ -5,9 +5,9 @@ import ormar
 from databases import Database
 from sqlalchemy import Enum, MetaData
 
-from db.db_setting_const import DATABASE_URL
+from core import settings
 
-database = Database(DATABASE_URL, pool_recycle=300)
+database = Database(settings.DATABASE_URL, pool_recycle=300)
 
 
 async def init_db_pool():

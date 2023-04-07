@@ -3,7 +3,7 @@ from typing import Union
 
 from aioredis import Redis
 
-from db.db_setting_const import REDIS_URL
+from core import settings
 
 
 class RedisPlus(Redis):
@@ -59,7 +59,7 @@ class RedisPlus(Redis):
         return json.loads(value)
 
 
-redis_client = RedisPlus.from_url(REDIS_URL)
+redis_client = RedisPlus.from_url(settings.REDIS_URL)
 
 
 async def init_redis_pool() -> RedisPlus:
