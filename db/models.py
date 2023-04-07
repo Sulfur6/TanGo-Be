@@ -60,6 +60,7 @@ class Task(ormar.Model):
         tablename = 'task'
 
     id: int = ormar.Integer(primary_key=True)
+    task_id: int = ormar.Integer()
     task_set_id: int = ormar.Integer()
     node_id: Optional[int] = ormar.Integer(nullable=True)
     cpu_dem: int = ormar.Integer()
@@ -67,6 +68,9 @@ class Task(ormar.Model):
     disk_dem: int = ormar.Integer()
     delay_constraint: int = ormar.Integer()
     image_tag: Optional[str] = ormar.String(max_length=32)
+    task_set: TaskSet = ormar.ForeignKey(
+        TaskSet, name="task_set_id", related_name="all_tasks"
+    )
 
 
 class InterTaskContraints(ormar.Model):

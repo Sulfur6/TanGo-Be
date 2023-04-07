@@ -14,6 +14,7 @@ class TaskModel(BaseModel):
     """
     Pydantic task model used in post task set method
     """
+    task_id: int
     cpu_dem: conint(ge=1)
     mem_dem: conint(ge=1)
     disk_dem: conint(ge=1)
@@ -25,6 +26,7 @@ class TaskSetModel(BaseModel):
     """
     Pydantic task set model used in post task set method
     """
+    task_set_id: Optional[int]
     task_count: conint(ge=1)
     name: str
     tasks: List[TaskModel]
