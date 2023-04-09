@@ -1,6 +1,6 @@
 from typing import Dict, List, Literal, Optional
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Body
 from pydantic import BaseModel, conint
 
 from db.models import TaskSet, Task
@@ -99,5 +99,69 @@ async def post_task_set(request: Request, body: TaskSetModel):
         tasks.append(task_orm)
 
     await Task.objects.bulk_create(tasks)
+
+    return resp_200(data={"id": task_set.id, "is_running": body.start_flag})
+
+
+@base_router.put("/task_set", response_model=ResultModel[Dict], summary="update a scheduling task set")
+async def put_task_set(request: Request, body: TaskSetModel = Body()):
+    if not body.task_set_id:
+        return resp_404()
+    task_set = await TaskSet.objects.select_related("all_tasks").get_or_none(id=body.task_set_id)
+    if not task_set:
+        return resp_404()
+    if task_set.state == 2:
+        return resp_404()
+
+    if task_set.name != body.name:
+        count = await TaskSet.objects.filter(name=body.name).count()
+        if count > 0:
+            return resp_400()
+
+    if request.headers["user_id"] != task_set.creator_id:
+        return resp_400()
+
+    if task_set.state == 1:
+        return resp_400()
+
+    raw_tasks = {task.task_id: task for task in task_set.all_tasks}
+    new_tasks = []
+    update_tasks = []
+    for task in body.tasks:
+        if task.task_id in raw_tasks:
+            raw_task = raw_tasks.pop(task.task_id)
+            if task.cpu_dem != raw_task.cpu_dem or task.mem_dem != raw_task.mem_dem \
+                    or task.disk_dem != raw_task.disk_dem or task.delay_constraint != raw_task.delay_constraint \
+                    or task.image_tag != raw_task.image_tag:
+                raw_task.cpu_dem = task.cpu_dem
+                raw_task.mem_dem = task.mem_dem
+                raw_task.disk_dem = task.disk_dem
+                raw_task.delay_constraint = task.delay_constraint
+                raw_task.image_tag = task.image_tag
+
+                update_tasks.append(raw_task)
+                continue
+
+        new_task = Task(
+            task_id=task.task_id,
+            cpu_dem=task.cpu_dem,
+            mem_dem=task.mem_dem,
+            disk_dem=task.disk_dem,
+            delay_constraint=task.delay_constraint,
+            image_tag=task.image_tag
+        )
+
+        new_tasks.append(new_task)
+
+    if new_tasks:
+        await Task.objects.bulk_create(new_tasks)
+    if update_tasks:
+        await Task.objects.bulk_update(update_tasks)
+    if raw_tasks:
+        await Task.objects.filter(id__in=[task.id for task in raw_tasks.values()]).delete()
+
+    if body.start_flag == 1:
+        task_set.state = 1
+        await task_set.save()
 
     return resp_200(data={"id": task_set.id, "is_running": body.start_flag})
