@@ -5,11 +5,11 @@
       <excludeFolder url="file://$MODULE_DIR$/venv" />
       <excludeFolder url="file://$MODULE_DIR$/sql" />
     </content>
-    <orderEntry type="inheritedJdk" />
+    <orderEntry type="jdk" jdkName="Python 3.9 (TanGo-Be)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="PackageRequirementsSettings">
-    <option name="versionSpecifier" value="Greater or equal (&gt;=x.y.z)" />
+    <option name="versionSpecifier" />
     <option name="removeUnused" value="true" />
   </component>
 </module>

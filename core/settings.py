@@ -5,5 +5,5 @@ LOG_DIR = os.path.join(BASE_DIR, "logs")
 if not os.path.exists(LOG_DIR):
     os.makedirs(LOG_DIR)  # 创建路径
 
-DATABASE_URL = "mysql://root:password@localhost:3306/tango"
+DATABASE_URL = "mysql://root:tango2023!!!@sh-cynosdbmysql-grp-azvmb5pu.sql.tencentcdb.com:27870/tango"
 REDIS_URL = "redis://localhost:6739/0"
