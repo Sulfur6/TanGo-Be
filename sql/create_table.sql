@@ -3,15 +3,15 @@
 
  Source Server         : Tango
  Source Server Type    : MySQL
- Source Server Version : 50741 (5.7.41)
- Source Host           : localhost:3306
+ Source Server Version : 50718 (5.7.18-cynos-log)
+ Source Host           : sh-cynosdbmysql-grp-azvmb5pu.sql.tencentcdb.com:27870
  Source Schema         : tango
 
  Target Server Type    : MySQL
- Target Server Version : 50741 (5.7.41)
+ Target Server Version : 50718 (5.7.18-cynos-log)
  File Encoding         : 65001
 
- Date: 09/04/2023 16:29:17
+ Date: 22/04/2023 16:27:04
 */
 
 SET NAMES utf8mb4;
@@ -29,8 +29,10 @@ CREATE TABLE `inter_task_constraints` (
   `bandwidth` int(10) unsigned DEFAULT NULL COMMENT 'inter task bandwidth constraint',
   `delay` int(10) unsigned DEFAULT NULL COMMENT 'inter task delay constraint',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `id` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='inter task constraints';
+  UNIQUE KEY `id` (`id`),
+  KEY `related_task_set` (`task_set_id`),
+  CONSTRAINT `related_task_set` FOREIGN KEY (`task_set_id`) REFERENCES `task_set` (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COMMENT='inter task constraints';
 
 -- ----------------------------
 -- Table structure for network_node
@@ -82,7 +84,7 @@ CREATE TABLE `task` (
   UNIQUE KEY `id` (`id`),
   KEY `task_set_related` (`task_set_id`),
   CONSTRAINT `task_set_related` FOREIGN KEY (`task_set_id`) REFERENCES `task_set` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COMMENT='tasks';
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COMMENT='tasks';
 
 -- ----------------------------
 -- Table structure for task_set
@@ -98,7 +100,7 @@ CREATE TABLE `task_set` (
   `mtime` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'modify time',
   PRIMARY KEY (`id`),
   UNIQUE KEY `id` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COMMENT='task set';
+) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COMMENT='task set';
 
 -- ----------------------------
 -- Table structure for user
