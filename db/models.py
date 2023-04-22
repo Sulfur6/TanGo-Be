@@ -83,3 +83,6 @@ class InterTaskContraints(ormar.Model):
     z_task_id: int = ormar.Integer()
     bandwidth: int = ormar.Integer()
     delay: int = ormar.Integer()
+    task_set: TaskSet = ormar.ForeignKey(
+        TaskSet, name="task_set_id", related_name="all_inter_task_constraints"
+    )

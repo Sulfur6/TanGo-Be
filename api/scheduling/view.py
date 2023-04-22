@@ -3,7 +3,7 @@ from typing import Dict, List, Literal, Optional
 from fastapi import APIRouter, Request, Body
 from pydantic import BaseModel, conint
 
-from db.models import TaskSet, Task
+from db.models import TaskSet, Task, InterTaskContraints
 from utils.make_response import resp_200, resp_400, resp_404
 from utils.result_schema import ResultListModel, ResultModel
 
@@ -22,6 +22,13 @@ class TaskModel(BaseModel):
     image_tag: Optional[str]
 
 
+class InterTaskConstraintsModel(BaseModel):
+    a_task_id: int
+    z_task_id: int
+    bandwidth: Optional[int]
+    delay: Optional[int]
+
+
 class TaskSetModel(BaseModel):
     """
     Pydantic task set model used in post task set method
@@ -30,6 +37,7 @@ class TaskSetModel(BaseModel):
     task_count: conint(ge=1)
     name: str
     tasks: List[TaskModel]
+    inter_task_constraints: List[InterTaskConstraintsModel]
     start_flag: bool
 
 
@@ -38,7 +46,7 @@ class TaskSetResponseModel(BaseModel):
     response model for get specific task set
     """
     task_set: TaskSet.get_pydantic()
-    tasks: List[Task.get_pydantic()]
+    # tasks: List[Task.get_pydantic()]
 
 
 @base_router.get("/task_sets", response_model=ResultListModel[List[TaskSet.get_pydantic()]],
@@ -65,11 +73,11 @@ async def list_task_sets(sort_by: Literal["ctime", "mtime"] = "ctime",
 @base_router.get("/task_set/{task_set_id}", response_model=ResultModel[TaskSetResponseModel],
                  summary="get specific task set and all tasks inside")
 async def get_task_set(task_set_id: int):
-    task_set = await TaskSet.objects.get_or_none(id=task_set_id)
+    task_set = await TaskSet.objects.select_related(["all_tasks", "all_inter_task_constraints"]).get_or_none(
+        id=task_set_id)
     if not task_set:
         return resp_404()
-    tasks = await Task.objects.filter(task_set_id=task_set_id).all()
-    return resp_200(data=TaskSetResponseModel(task_set=task_set, tasks=tasks))
+    return resp_200(data=task_set)
 
 
 @base_router.post("/task_set", response_model=ResultModel[Dict], summary="create a scheduling task set")
@@ -90,15 +98,31 @@ async def post_task_set(request: Request, body: TaskSetModel):
     for task in body.tasks:
         task_orm = Task(
             task_set_id=task_set.id,
+            task_id=task.task_id,
             cpu_dem=task.cpu_dem,
             mem_dem=task.mem_dem,
             disk_dem=task.disk_dem,
             delay_constraint=task.delay_constraint,
-            image_tag=task.image_tag
+            image_tag=task.image_tag,
+            task_set=task_set
         )
         tasks.append(task_orm)
 
     await Task.objects.bulk_create(tasks)
+
+    inter_task_constraints: List[InterTaskContraints] = []
+    for itc in body.inter_task_constraints:
+        itc_orm = InterTaskContraints(
+            task_set_id=task_set.id,
+            a_task_id=itc.a_task_id,
+            z_task_id=itc.z_task_id,
+            bandwidth=itc.bandwidth,
+            delay=itc.delay,
+            task_set=task_set
+        )
+        inter_task_constraints.append(itc_orm)
+
+    await InterTaskContraints.objects.bulk_create(inter_task_constraints)
 
     return resp_200(data={"id": task_set.id, "is_running": body.start_flag})
 
@@ -107,7 +131,8 @@ async def post_task_set(request: Request, body: TaskSetModel):
 async def put_task_set(request: Request, body: TaskSetModel = Body()):
     if not body.task_set_id:
         return resp_404()
-    task_set = await TaskSet.objects.select_related("all_tasks").get_or_none(id=body.task_set_id)
+    task_set = await TaskSet.objects.select_related(["all_tasks", "all_inter_task_constraints"]).get_or_none(
+        id=body.task_set_id)
     if not task_set:
         return resp_404()
     if task_set.state == 2:
@@ -118,8 +143,8 @@ async def put_task_set(request: Request, body: TaskSetModel = Body()):
         if count > 0:
             return resp_400()
 
-    if request.headers["user_id"] != task_set.creator_id:
-        return resp_400()
+    # if request.headers["user_id"] != task_set.creator_id:
+    #     return resp_400()
 
     if task_set.state == 1:
         return resp_400()
@@ -143,12 +168,14 @@ async def put_task_set(request: Request, body: TaskSetModel = Body()):
                 continue
 
         new_task = Task(
+            task_set_id=task_set.id,
             task_id=task.task_id,
             cpu_dem=task.cpu_dem,
             mem_dem=task.mem_dem,
             disk_dem=task.disk_dem,
             delay_constraint=task.delay_constraint,
-            image_tag=task.image_tag
+            image_tag=task.image_tag,
+            task_set=task_set
         )
 
         new_tasks.append(new_task)
@@ -159,6 +186,37 @@ async def put_task_set(request: Request, body: TaskSetModel = Body()):
         await Task.objects.bulk_update(update_tasks)
     if raw_tasks:
         await Task.objects.filter(id__in=[task.id for task in raw_tasks.values()]).delete()
+
+    raw_itcs = {(itc.a_task_id, itc.z_task_id): itc for itc in task_set.all_inter_task_constraints}
+    new_itcs = []
+    update_itcs = []
+    for itc in body.inter_task_constraints:
+        if (itc.a_task_id, itc.z_task_id) in raw_itcs:
+            raw_itc = raw_itcs.pop((itc.a_task_id, itc.z_task_id))
+            if itc.bandwidth != raw_itc.bandwidth or itc.delay != raw_itc.delay:
+                raw_itc.delay = itc.delay
+                raw_itc.bandwidth = itc.bandwidth
+
+                update_itcs.append(raw_itc)
+                continue
+
+        new_itc = InterTaskContraints(
+            task_set_id=task_set.id,
+            a_task_id=itc.a_task_id,
+            z_task_id=itc.z_task_id,
+            bandwidth=itc.bandwidth,
+            delay=itc.delay,
+            task_set=task_set
+        )
+
+        new_itcs.append(new_itc)
+
+    if new_itcs:
+        await InterTaskContraints.objects.bulk_create(new_itcs)
+    if update_itcs:
+        await InterTaskContraints.objects.bulk_update(update_itcs)
+    if raw_itcs:
+        await InterTaskContraints.objects.filter(id__in=[itc.id for itc in raw_itcs.values()]).delete()
 
     if body.start_flag == 1:
         task_set.state = 1
