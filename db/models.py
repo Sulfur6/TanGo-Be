@@ -28,6 +28,9 @@ class NetworkNode(ormar.Model):
     cpu_rem: int = ormar.Integer()
     mem_rem: int = ormar.Integer()
     disk_rem: int = ormar.Integer()
+    unit_cpu_price: int = ormar.Integer()
+    unit_mem_price: int = ormar.Integer()
+    unit_disk_price: int = ormar.Integer()
 
 
 class NetworkNodeDelay(ormar.Model):
@@ -67,7 +70,7 @@ class Task(ormar.Model):
     mem_dem: int = ormar.Integer()
     disk_dem: int = ormar.Integer()
     delay_constraint: int = ormar.Integer()
-    image_tag: Optional[str] = ormar.String(max_length=32)
+    # image_tag: Optional[str] = ormar.String(max_length=32)
     task_set: TaskSet = ormar.ForeignKey(
         TaskSet, name="task_set_id", related_name="all_tasks"
     )
@@ -86,3 +89,14 @@ class InterTaskContraints(ormar.Model):
     task_set: TaskSet = ormar.ForeignKey(
         TaskSet, name="task_set_id", related_name="all_inter_task_constraints"
     )
+
+
+class InterNetworkNode(ormar.Model):
+    class Meta(BaseMeta):
+        tablename = 'inter_network_node'
+
+    id: int = ormar.Integer(primary_key=True)
+    a_node_id: int = ormar.Integer()
+    z_node_id: int = ormar.Integer()
+    bandwidth: int = ormar.Integer()
+    delay: int = ormar.Integer()

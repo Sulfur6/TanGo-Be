@@ -3,7 +3,9 @@ from typing import Dict, List, Literal, Optional
 from fastapi import APIRouter, Request, Body
 from pydantic import BaseModel, conint
 
+from api.scheduling.constans import *
 from db.models import TaskSet, Task, InterTaskContraints
+from db.redis import redis_client
 from utils.make_response import resp_200, resp_400, resp_404
 from utils.result_schema import ResultListModel, ResultModel
 
@@ -89,6 +91,7 @@ async def post_task_set(request: Request, body: TaskSetModel):
     task_set = TaskSet(name=body.name, creator_id=request.headers["user_id"], task_count=body.task_count)
     if body.start_flag:
         task_set.state = 1
+        await trigger_schedule_task(task_set.id, body)
     else:
         task_set.state = 0
 
@@ -221,5 +224,46 @@ async def put_task_set(request: Request, body: TaskSetModel = Body()):
     if body.start_flag == 1:
         task_set.state = 1
         await task_set.save()
+        await trigger_schedule_task(task_set.id, body)
 
     return resp_200(data={"id": task_set.id, "is_running": body.start_flag})
+
+
+@base_router.get("/trigger/{task_set_id}")
+async def trigger(task_set_id: int):
+    await trigger_schedule_task(task_set_id)
+
+
+async def trigger_schedule_task(id: int, task_set: Optional[TaskSetModel] = None):
+    if not task_set:
+        task_set = await TaskSet.objects.select_related(["all_tasks", "all_inter_task_constraints"]).get_or_none(id=id)
+        task_count = [str(task_set.task_count)]
+        itc_count = [str(len(task_set.all_inter_task_constraints))]
+        tasks: List = []
+        for task in task_set.all_tasks:
+            task_list = [task.task_id, task.cpu_dem, task.mem_dem, task.disk_dem,
+                         task.delay_constraint if task.delay_constraint else INT_MAX]
+            tasks.append(" ".join([str(item) for item in task_list]))
+        itcs: List = []
+        for itc in task_set.all_inter_task_constraints:
+            itc_list = [itc.a_task_id, itc.z_task_id, itc.bandwidth if itc.bandwidth else 0,
+                        itc.delay if itc.delay else INT_MAX]
+            itcs.append(" ".join([str(item) for item in itc_list]))
+        task_set_input = "\n".join(task_count + tasks + itc_count + itcs)
+        await redis_client.hset(REDIS_KEY.format(id), REDIS_INPUT_KEY, task_set_input)
+        return
+
+    task_count = [str(len(task_set.tasks))]
+    itc_count = [str(len(task_set.inter_task_constraints))]
+    tasks: List = []
+    for task in task_set.tasks:
+        task_list = [task.task_id, task.cpu_dem, task.mem_dem, task.disk_dem,
+                     task.delay_constraint if task.delay_constraint else INT_MAX]
+        tasks.append(" ".join(task_list))
+    itcs: List = []
+    for itc in task_set.inter_task_constraints:
+        itc_list = [itc.a_task_id, itc.z_task_id, itc.bandwidth if itc.bandwidth else 0,
+                    itc.delay if itc.delay else INT_MAX]
+        itcs.append(" ".join(itc_list))
+    task_set_input = "\n".join(task_count + tasks + itc_count + itcs)
+    await redis_client.hset(REDIS_KEY.format(id), REDIS_INPUT_KEY, task_set_input)
