@@ -75,7 +75,7 @@ async def list_task_sets(sort_by: Literal["ctime", "mtime"] = "ctime",
 @base_router.get("/task_set/{task_set_id}", response_model=ResultModel[TaskSetResponseModel],
                  summary="get specific task set and all tasks inside")
 async def get_task_set(task_set_id: int):
-    task_set = await TaskSet.objects.select_related(["all_tasks", "all_inter_task_constraints"]).get_or_none(
+    task_set = await TaskSet.objects.select_related(["all_tasks"]).get_or_none(
         id=task_set_id)
     if not task_set:
         return resp_404()
