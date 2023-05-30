@@ -84,14 +84,13 @@ async def get_task_set(task_set_id: int):
 
 @base_router.post("/task_set", response_model=ResultModel[Dict], summary="create a scheduling task set")
 async def post_task_set(request: Request, body: TaskSetModel):
-    count = await TaskSet.objects.filter(name=body.name).count()
-    if count > 0:
-        return resp_400(msg="任务组标题已存在！")
+    # count = await TaskSet.objects.filter(name=body.name).count()
+    # if count > 0:
+    #     return resp_400(msg="任务组标题已存在！")
 
     task_set = TaskSet(name=body.name, creator_id=request.headers["user_id"], task_count=body.task_count)
     if body.start_flag:
         task_set.state = 1
-        await trigger_schedule_task(task_set.id, body)
     else:
         task_set.state = 0
 
@@ -141,10 +140,10 @@ async def put_task_set(request: Request, body: TaskSetModel = Body()):
     if task_set.state == 2:
         return resp_404()
 
-    if task_set.name != body.name:
-        count = await TaskSet.objects.filter(name=body.name).count()
-        if count > 0:
-            return resp_400()
+    # if task_set.name != body.name:
+    #     count = await TaskSet.objects.filter(name=body.name).count()
+    #     if count > 0:
+    #         return resp_400()
 
     # if request.headers["user_id"] != task_set.creator_id:
     #     return resp_400()
@@ -259,11 +258,11 @@ async def trigger_schedule_task(id: int, task_set: Optional[TaskSetModel] = None
     for task in task_set.tasks:
         task_list = [task.task_id, task.cpu_dem, task.mem_dem, task.disk_dem,
                      task.delay_constraint if task.delay_constraint else INT_MAX]
-        tasks.append(" ".join(task_list))
+        tasks.append(" ".join([str(item) for item in task_list]))
     itcs: List = []
     for itc in task_set.inter_task_constraints:
         itc_list = [itc.a_task_id, itc.z_task_id, itc.bandwidth if itc.bandwidth else 0,
                     itc.delay if itc.delay else INT_MAX]
-        itcs.append(" ".join(itc_list))
+        itcs.append(" ".join([str(item) for item in itc_list]))
     task_set_input = "\n".join(task_count + tasks + itc_count + itcs)
     await redis_client.hset(REDIS_KEY.format(id), REDIS_INPUT_KEY, task_set_input)
