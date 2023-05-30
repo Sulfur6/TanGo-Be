@@ -21,7 +21,7 @@ class TaskModel(BaseModel):
     mem_dem: conint(ge=1)
     disk_dem: conint(ge=1)
     delay_constraint: Optional[int]
-    image_tag: Optional[str]
+    image_tag: Optional[str] = "default"
 
 
 class InterTaskConstraintsModel(BaseModel):
@@ -88,7 +88,7 @@ async def post_task_set(request: Request, body: TaskSetModel):
     # if count > 0:
     #     return resp_400(msg="任务组标题已存在！")
 
-    task_set = TaskSet(name=body.name, creator_id=request.headers["user_id"], task_count=body.task_count)
+    task_set = TaskSet(name=body.name, creator_id=0, task_count=body.task_count)
     if body.start_flag:
         task_set.state = 1
     else:

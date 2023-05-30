@@ -70,7 +70,7 @@ class Task(ormar.Model):
     mem_dem: int = ormar.Integer()
     disk_dem: int = ormar.Integer()
     delay_constraint: int = ormar.Integer()
-    # image_tag: Optional[str] = ormar.String(max_length=32)
+    image_tag: Optional[str] = ormar.String(max_length=32)
     task_set: TaskSet = ormar.ForeignKey(
         TaskSet, name="task_set_id", related_name="all_tasks"
     )
