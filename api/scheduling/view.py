@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request, Body
 from pydantic import BaseModel, conint
 
 from api.scheduling.constans import *
-from db.models import TaskSet, Task, InterTaskContraints
+from db.models import TaskSet, Task, InterTaskContraints, SchedulingResult
 from db.redis import redis_client
 from utils.make_response import resp_200, resp_400, resp_404
 from utils.result_schema import ResultListModel, ResultModel
@@ -50,6 +50,23 @@ class TaskSetResponseModel(BaseModel):
     task_set: TaskSet.get_pydantic()
     # tasks: List[Task.get_pydantic()]
 
+
+class SchedulingResultResponseModel(BaseModel):
+    """
+    response model for get scheduling result
+    """
+
+    class TaskResult(BaseModel):
+        task_id: int
+        node_id: int
+
+    task_set_id: int
+    algorithm_type: str
+    time_cost: float
+    cost: int
+    tail_latency: int
+    avg_latency: int
+    task_result_list: List[TaskResult]
 
 @base_router.get("/task_sets", response_model=ResultListModel[List[TaskSet.get_pydantic()]],
                  summary="get task sets seperated by page")
@@ -231,6 +248,31 @@ async def put_task_set(request: Request, body: TaskSetModel = Body()):
 @base_router.get("/trigger/{task_set_id}")
 async def trigger(task_set_id: int):
     await trigger_schedule_task(task_set_id)
+
+
+@base_router.get("/callback/{task_set_id}")
+async def callback_func(task_set_id: int):
+    pass
+
+
+@base_router.get("/result/{task_set_id}")
+async def get_scheduling_result(task_set_id: int):
+    task_set = await TaskSet.objects.select_related(["all_tasks"]).get_or_none(id=task_set_id)
+    result = await SchedulingResult.objects.get_or_none(task_set_id=task_set_id)
+    task_result_list: List[SchedulingResultResponseModel.TaskResult] = []
+    for task in task_set.all_tasks:
+        task_result_list.append(SchedulingResultResponseModel.TaskResult(task_id=task.task_id, node_id=task.node_id))
+
+    scheduling_result = SchedulingResultResponseModel(
+        task_set_id=task_set_id,
+        algorithm_type=result.algorithm,
+        time_cost=result.time,
+        cost=result.cost,
+        tail_latency=result.tail_latency,
+        avg_latency=result.avg_latency,
+        task_result_list=task_result_list
+    )
+    return resp_200(data=scheduling_result)
 
 
 async def trigger_schedule_task(id: int, task_set: Optional[TaskSetModel] = None):

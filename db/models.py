@@ -100,3 +100,16 @@ class InterNetworkNode(ormar.Model):
     z_node_id: int = ormar.Integer()
     bandwidth: int = ormar.Integer()
     delay: int = ormar.Integer()
+
+
+class SchedulingResult(ormar.Model):
+    class Meta(BaseMeta):
+        tablename = 'scheduling_result'
+
+    id: int = ormar.Integer(primary_key=True)
+    task_set_id: int = ormar.Integer()
+    algorithm: str = ormar.String(max_length=256)
+    time: float = ormar.Float()
+    cost: int = ormar.BigInteger()
+    tail_latency: int = ormar.Integer()
+    avg_latency: int = ormar.Integer()
