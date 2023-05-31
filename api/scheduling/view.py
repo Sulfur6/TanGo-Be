@@ -1,3 +1,4 @@
+import re
 from typing import Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Request, Body
@@ -252,7 +253,41 @@ async def trigger(task_set_id: int):
 
 @base_router.get("/callback/{task_set_id}")
 async def callback_func(task_set_id: int):
-    pass
+    _algorithm_type = "default"
+    task_set = await TaskSet.objects.select_related(["all_tasks"]).get_or_none(id=task_set_id)
+    _result_list = [0 for i in range(len(task_set.all_tasks))]
+
+    raw_result = await redis_client.hget(REDIS_KEY.format(task_set_id), REDIS_RESULT_FIELD)
+    raw_result = str(raw_result, encoding='utf-8')
+    raw_result_list = raw_result.splitlines()
+    _tmp = raw_result_list[0].split()
+    _cost, _tail_latency, _avg_latency = int(_tmp[0]), int(_tmp[1]), int(_tmp[2])
+    if re.search(r"\d+.\d+", raw_result_list[-1]):
+        _time_cost = float(re.search(r"\d+.\d+", raw_result_list[-1]).group())
+    else:
+        _time_cost = float(re.search(r"\d", raw_result_list[-1]).group())
+
+    scheduling_result = SchedulingResult(
+        task_set_id=task_set_id,
+        algorithm=_algorithm_type,
+        time=_time_cost,
+        cost=_cost,
+        tail_latency=_tail_latency,
+        avg_latency=_avg_latency
+    )
+    await scheduling_result.save()
+
+    for _result in raw_result_list[1:-1]:
+        task_id = int(_result.split()[0])
+        node_id = int(_result.split()[1])
+        _result_list[task_id] = node_id
+
+    for task in task_set.all_tasks:
+        task.node_id = _result_list[task.task_id]
+
+    await Task.objects.bulk_update(task_set.all_tasks)
+
+    return resp_200(data="ok")
 
 
 @base_router.get("/result/{task_set_id}")
@@ -291,7 +326,7 @@ async def trigger_schedule_task(id: int, task_set: Optional[TaskSetModel] = None
                         itc.delay if itc.delay else INT_MAX]
             itcs.append(" ".join([str(item) for item in itc_list]))
         task_set_input = "\n".join(task_count + tasks + itc_count + itcs)
-        await redis_client.hset(REDIS_KEY.format(id), REDIS_INPUT_KEY, task_set_input)
+        await redis_client.hset(REDIS_KEY.format(id), REDIS_INPUT_FIELD, task_set_input)
         return
 
     task_count = [str(len(task_set.tasks))]
@@ -307,4 +342,4 @@ async def trigger_schedule_task(id: int, task_set: Optional[TaskSetModel] = None
                     itc.delay if itc.delay else INT_MAX]
         itcs.append(" ".join([str(item) for item in itc_list]))
     task_set_input = "\n".join(task_count + tasks + itc_count + itcs)
-    await redis_client.hset(REDIS_KEY.format(id), REDIS_INPUT_KEY, task_set_input)
+    await redis_client.hset(REDIS_KEY.format(id), REDIS_INPUT_FIELD, task_set_input)
