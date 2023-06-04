@@ -7,3 +7,4 @@ if not os.path.exists(LOG_DIR):
 
 DATABASE_URL = "mysql://root:tango2023!!!@sh-cynosdbmysql-grp-azvmb5pu.sql.tencentcdb.com:27870/tango"
 REDIS_URL = f"redis://localhost:6379/0"
+ALGORITHM_SERVICE_URL = "http://localhost:2333/scheduling/{}"

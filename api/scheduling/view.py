@@ -1,10 +1,12 @@
 import re
 from typing import Dict, List, Literal, Optional
 
+import aiohttp
 from fastapi import APIRouter, Request, Body
 from pydantic import BaseModel, conint
 
 from api.scheduling.constans import *
+from core.settings import ALGORITHM_SERVICE_URL
 from db.models import TaskSet, Task, InterTaskContraints, SchedulingResult
 from db.redis import redis_client
 from utils.make_response import resp_200, resp_400, resp_404
@@ -249,6 +251,7 @@ async def put_task_set(request: Request, body: TaskSetModel = Body()):
 @base_router.get("/trigger/{task_set_id}")
 async def trigger(task_set_id: int):
     await trigger_schedule_task(task_set_id)
+    return resp_200(data="ok")
 
 
 @base_router.get("/callback/{task_set_id}")
@@ -260,12 +263,12 @@ async def callback_func(task_set_id: int):
     raw_result = await redis_client.hget(REDIS_KEY.format(task_set_id), REDIS_RESULT_FIELD)
     raw_result = str(raw_result, encoding='utf-8')
     raw_result_list = raw_result.splitlines()
-    _tmp = raw_result_list[0].split()
+    _tmp = raw_result_list[1].split()
     _cost, _tail_latency, _avg_latency = int(_tmp[0]), int(_tmp[1]), int(_tmp[2])
-    if re.search(r"\d+.\d+", raw_result_list[-1]):
-        _time_cost = float(re.search(r"\d+.\d+", raw_result_list[-1]).group())
+    if re.search(r"\d+.\d+", raw_result_list[0]):
+        _time_cost = float(re.search(r"\d+.\d+", raw_result_list[0]).group())
     else:
-        _time_cost = float(re.search(r"\d", raw_result_list[-1]).group())
+        _time_cost = float(re.search(r"\d", raw_result_list[0]).group())
 
     scheduling_result = SchedulingResult(
         task_set_id=task_set_id,
@@ -277,7 +280,7 @@ async def callback_func(task_set_id: int):
     )
     await scheduling_result.save()
 
-    for _result in raw_result_list[1:-1]:
+    for _result in raw_result_list[2:]:
         task_id = int(_result.split()[0])
         node_id = int(_result.split()[1])
         _result_list[task_id] = node_id
@@ -286,6 +289,8 @@ async def callback_func(task_set_id: int):
         task.node_id = _result_list[task.task_id]
 
     await Task.objects.bulk_update(task_set.all_tasks)
+
+    print(f"GET /api/scheduling/trigger/{task_set_id} HTTP/1.1 OK")
 
     return resp_200(data="ok")
 
@@ -310,6 +315,12 @@ async def get_scheduling_result(task_set_id: int):
     return resp_200(data=scheduling_result)
 
 
+async def make_request(URL):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(URL) as response:
+            return await response.text()
+
+
 async def trigger_schedule_task(id: int, task_set: Optional[TaskSetModel] = None):
     if not task_set:
         task_set = await TaskSet.objects.select_related(["all_tasks", "all_inter_task_constraints"]).get_or_none(id=id)
@@ -327,7 +338,8 @@ async def trigger_schedule_task(id: int, task_set: Optional[TaskSetModel] = None
             itcs.append(" ".join([str(item) for item in itc_list]))
         task_set_input = "\n".join(task_count + tasks + itc_count + itcs)
         await redis_client.hset(REDIS_KEY.format(id), REDIS_INPUT_FIELD, task_set_input)
-        return
+        await make_request(ALGORITHM_SERVICE_URL.format(id))
+        await callback_func(id)
 
     task_count = [str(len(task_set.tasks))]
     itc_count = [str(len(task_set.inter_task_constraints))]
@@ -343,3 +355,5 @@ async def trigger_schedule_task(id: int, task_set: Optional[TaskSetModel] = None
         itcs.append(" ".join([str(item) for item in itc_list]))
     task_set_input = "\n".join(task_count + tasks + itc_count + itcs)
     await redis_client.hset(REDIS_KEY.format(id), REDIS_INPUT_FIELD, task_set_input)
+    await make_request(ALGORITHM_SERVICE_URL.format(id))
+    await callback_func(id)
