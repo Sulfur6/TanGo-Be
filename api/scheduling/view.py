@@ -2,6 +2,7 @@ import re
 from typing import Dict, List, Literal, Optional
 
 import aiohttp
+import requests
 from fastapi import APIRouter, Request, Body
 from pydantic import BaseModel, conint
 
@@ -144,7 +145,10 @@ async def post_task_set(request: Request, body: TaskSetModel):
         )
         inter_task_constraints.append(itc_orm)
 
-    await InterTaskContraints.objects.bulk_create(inter_task_constraints)
+    if len(inter_task_constraints) > 0:
+        await InterTaskContraints.objects.bulk_create(inter_task_constraints)
+
+    await trigger_schedule_task(task_set.id, body)
 
     return resp_200(data={"id": task_set.id, "is_running": body.start_flag})
 
@@ -256,6 +260,7 @@ async def trigger(task_set_id: int):
 
 @base_router.get("/callback/{task_set_id}")
 async def callback_func(task_set_id: int):
+    count = await SchedulingResult.objects.filter(task_set_id=task_set_id).count()
     _algorithm_type = "default"
     task_set = await TaskSet.objects.select_related(["all_tasks"]).get_or_none(id=task_set_id)
     _result_list = [0 for i in range(len(task_set.all_tasks))]
@@ -270,15 +275,24 @@ async def callback_func(task_set_id: int):
     else:
         _time_cost = float(re.search(r"\d", raw_result_list[0]).group())
 
-    scheduling_result = SchedulingResult(
-        task_set_id=task_set_id,
-        algorithm=_algorithm_type,
-        time=_time_cost,
-        cost=_cost,
-        tail_latency=_tail_latency,
-        avg_latency=_avg_latency
-    )
-    await scheduling_result.save()
+    if count == 0:
+        scheduling_result = SchedulingResult(
+            task_set_id=task_set_id,
+            algorithm=_algorithm_type,
+            time=_time_cost,
+            cost=_cost,
+            tail_latency=_tail_latency,
+            avg_latency=_avg_latency
+        )
+        await scheduling_result.save()
+    else:
+        scheduling_result = await SchedulingResult.objects.get_or_none(task_set_id=task_set_id)
+        scheduling_result.algorithm = _algorithm_type
+        scheduling_result.time = _time_cost
+        scheduling_result.cost = _cost
+        scheduling_result.tail_latency = _tail_latency
+        scheduling_result.avg_latency = _avg_latency
+        await scheduling_result.update()
 
     for _result in raw_result_list[2:]:
         task_id = int(_result.split()[0])
@@ -297,8 +311,11 @@ async def callback_func(task_set_id: int):
 
 @base_router.get("/result/{task_set_id}")
 async def get_scheduling_result(task_set_id: int):
-    task_set = await TaskSet.objects.select_related(["all_tasks"]).get_or_none(id=task_set_id)
+    count = await SchedulingResult.objects.filter(task_set_id=task_set_id).count()
+    if count == 0:
+        await trigger_schedule_task(task_set_id)
     result = await SchedulingResult.objects.get_or_none(task_set_id=task_set_id)
+    task_set = await TaskSet.objects.select_related(["all_tasks"]).get_or_none(id=task_set_id)
     task_result_list: List[SchedulingResultResponseModel.TaskResult] = []
     for task in task_set.all_tasks:
         task_result_list.append(SchedulingResultResponseModel.TaskResult(task_id=task.task_id, node_id=task.node_id))
@@ -338,8 +355,9 @@ async def trigger_schedule_task(id: int, task_set: Optional[TaskSetModel] = None
             itcs.append(" ".join([str(item) for item in itc_list]))
         task_set_input = "\n".join(task_count + tasks + itc_count + itcs)
         await redis_client.hset(REDIS_KEY.format(id), REDIS_INPUT_FIELD, task_set_input)
-        await make_request(ALGORITHM_SERVICE_URL.format(id))
+        requests.get(ALGORITHM_SERVICE_URL.format(id))
         await callback_func(id)
+        return
 
     task_count = [str(len(task_set.tasks))]
     itc_count = [str(len(task_set.inter_task_constraints))]
@@ -355,5 +373,5 @@ async def trigger_schedule_task(id: int, task_set: Optional[TaskSetModel] = None
         itcs.append(" ".join([str(item) for item in itc_list]))
     task_set_input = "\n".join(task_count + tasks + itc_count + itcs)
     await redis_client.hset(REDIS_KEY.format(id), REDIS_INPUT_FIELD, task_set_input)
-    await make_request(ALGORITHM_SERVICE_URL.format(id))
+    requests.get(ALGORITHM_SERVICE_URL.format(id))
     await callback_func(id)
