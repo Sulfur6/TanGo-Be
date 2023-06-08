@@ -69,8 +69,15 @@ async def sync_cloud_info():
     network_node_lines: List = []
     inn_lines: List = []
     for node in network_nodes:
+        network_node_delay = await NetworkNodeDelay.objects.filter(node_id=node.id).all()
+        tail_delay = -1
+        avg_delay = 0
+        for delay in network_node_delay:
+            tail_delay = max(tail_delay, delay.delay)
+            avg_delay += delay.delay
+        avg_delay //= len(network_node_delay)
         node_list = [node.id, node.cpu, node.mem, node.disk, node.cpu_rem, node.mem_rem, node.disk_rem,
-                     node.unit_cpu_price, node.unit_mem_price, node.unit_disk_price]
+                     node.unit_cpu_price, node.unit_mem_price, node.unit_disk_price, tail_delay, avg_delay]
         network_node_lines.append(" ".join([str(item) for item in node_list]))
     for inn in inter_network_nodes:
         inn_list = [inn.a_node_id, inn.z_node_id, inn.bandwidth, inn.delay]

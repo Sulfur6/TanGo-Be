@@ -6,6 +6,7 @@ import requests
 from fastapi import APIRouter, Request, Body
 from pydantic import BaseModel, conint
 
+from api.cloud_info.view import sync_cloud_info
 from api.scheduling.constans import *
 from core.settings import ALGORITHM_SERVICE_URL
 from db.models import TaskSet, Task, InterTaskContraints, SchedulingResult
@@ -339,6 +340,9 @@ async def make_request(URL):
 
 
 async def trigger_schedule_task(id: int, task_set: Optional[TaskSetModel] = None):
+    cloud_info = await redis_client.get("cloud_info")
+    if not cloud_info:
+        await sync_cloud_info()
     if not task_set:
         task_set = await TaskSet.objects.select_related(["all_tasks", "all_inter_task_constraints"]).get_or_none(id=id)
         task_count = [str(task_set.task_count)]
